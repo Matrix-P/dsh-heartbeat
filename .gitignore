@@ -1,0 +1,50 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output（lib/ 是 tsc --build 的产物，只随 npm publish 分发，不入库）
+dist/
+build/
+lib/
+*.tsbuildinfo
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# editor / OS
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# local env
+.env
+.env.local
+.env.*.local
+
+# npm 配置：可能含发布令牌，绝不能入库
+.npmrc
+
+# 私有笔记（需求文档 / 技术设计），只留本地，不进公开仓库
+notes/
+
+# runtime state (心跳运行期状态不应入库)
+*.local.yml
+state/
+
+# 试验目录
+.scratch/
+build-client/
+
+# npm/pnpm 打包产物（pnpm pack 生成，只用于本地验证或手工分发）
+*.tgz
+

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "CommonJS",
+    "moduleResolution": "Bundler",
+    // 源码用的是 ESM 语法，但要产出 CJS（浏览器 bundle 用 require）。TS 明确要求
+    // 此时关掉 verbatimModuleSyntax，否则 import/export 会被判为语法错误。
+    "verbatimModuleSyntax": false,
+    "outDir": "build-client",
+    "rootDir": "src",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,12 @@
+# 本文件是 dsh-heartbeat 作为「组合包（bundle）」被安装时应用的配置层。
+#
+# 官方规范：https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish
+# 用户执行 `dsh plugin add dsh-heartbeat` 时，dsh 会把本文件追加进 profile 的
+# `dsh.profile.bundles`，并在启动时按层顺序应用它。
+#
+# 【为什么 name 必须和 package.json 的 name 完全一致】
+# dsh-client-modules 认领客户端半边时，靠的是「Loader 行的 name == package.json 的 name」
+# （nearestPackage 的匹配条件）；不一致会导致宿主半边能跑、客户端界面永远不出现。
+- insert:
+    - id: dsh-heartbeat
+      name: dsh-heartbeat

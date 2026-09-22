@@ -1,0 +1,7 @@
+# pnpm 12 的构建脚本许可清单（旧版放在 package.json 的 pnpm 字段里，已不再读取）。
+#
+# esbuild 是 vitest → vite 的传递依赖，无法避免。它的 postinstall 构建脚本被策略
+# 拦下只产生一条警告：平台二进制由 optional 依赖 @esbuild/win32-x64 提供，
+# 不需要构建脚本。这里显式声明"不执行"，把警告变成明确的策略记录。
+allowBuilds:
+  esbuild: false
