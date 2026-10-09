@@ -26,7 +26,23 @@ const ROOT = resolve(import.meta.dirname, '..')
 const CJS_DIR = join(ROOT, 'build-client')
 const ENTRY_ID = 'client/index.js'
 const OUT_FILE = join(ROOT, 'lib', 'client.js')
-const PLUGIN_ID = 'dsh-heartbeat'
+/**
+ * bundle 的 id **必须等于 package.json 的 name**。
+ *
+ * 这是 dsh-client-modules 的硬契约：宿主的模块图按**包名**建条目
+ * （`reconcilePackage` 用 `resolveMeta` 得到的 packageName），
+ * `__ModuleLoader__.load({ id })` 注册的 id 必须与之逐字相同。
+ *
+ * 曾经这里是硬编码的 `'dsh-heartbeat'`：包名改成 `@analy3939/dsh-heartbeat` 之后
+ * 就错位了，桌面端直接报
+ * `client-modules: duplicate factory registration for "dsh-heartbeat"`，
+ * 并连带把整个 web 启动判为失败（`1 entry did not activate`）。
+ * 所以改成从 package.json 读 —— 以后改名不会再漏。
+ */
+const PLUGIN_ID = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).name
+if (typeof PLUGIN_ID !== 'string' || PLUGIN_ID === '') {
+  throw new Error('package.json 缺少 name，无法确定 bundle id')
+}
 
 /** 只匹配相对导入；裸导入留给 shell。 */
 const RELATIVE_REQUIRE_RE = /require\((["'])(\.[^"']*)\1\)/g
