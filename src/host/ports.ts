@@ -55,11 +55,22 @@ export interface AgentCapabilities {
  * 把端口消息转成官方 `UserMessage`。
  *
  * **必须**走官方工厂：`id` 与 `role` 由它铸造并深冻结，自己拼一个对象不满足运行时契约。
+ *
+ * 【关于 `source` 的类型断言】0.2.0 移除了共享的 `plugin` kind，官方注释原话：
+ * *"there is no shared catch-all `plugin` kind"* —— 改成「每个生产者在自己模块里声明 kind」。
+ * 我们保留 `kind: 'plugin'`、用断言跨过两代的类型差异，理由是：
+ *
+ * 1. 0.1.x 认这个 kind（就是它定义的），行为完全不变；
+ * 2. 0.2.x 的消费端对**未知 kind 是 fall through**（同一份注释写明），不会崩，
+ *    只是呈现上退化成普通用户消息；
+ * 3. 一个包要同时跑两代，就不能把任何一代的 `MessageSource` 引成硬类型。
+ *
+ * step 2 会改成「声明自己的 kind + 用 `boundContextSummary` 限长」。
  */
 export function toUserMessage(message: OutboundMessage): UserMessage {
   return createUserMessage({
     content: [{ type: 'text', text: message.text }],
-    source: message.source,
+    source: message.source as unknown as UserMessage['source'],
   })
 }
 

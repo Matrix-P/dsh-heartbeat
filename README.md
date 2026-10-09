@@ -44,7 +44,9 @@ pnpm pack
 dsh plugin add ./dsh-heartbeat-0.1.0.tgz --profile web
 ```
 
-要求：DSH `0.1.5-rc.2` 及以上、Node ≥ 20、Web 系 profile（设置界面依赖 Web 的客户端插槽）。
+要求：DSH **`0.1.5-rc.2` 或 `0.2.0-rc.2`**（两代都支持：配置通道在运行时探测 `settings.register` —— 有就走 0.1.x 的命名空间热更新，没有就用 0.2.x 的 Loader 行 Config）、Node ≥ 20、Web 系 profile（桌面端也是 Web 系）。
+
+> **0.2.x 上的两点差异**：0.2.0 移除了共享的 `plugin` 消息来源 kind，也移除了配置写前校验钩子。因此（1）心跳提示在 0.2.x 上按"未知来源"降级呈现；（2）配置问题通过 `/api/heartbeat/state` 的 `warnings` 暴露，而不是在保存时被直接拒绝。
 
 </details>
 

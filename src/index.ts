@@ -48,6 +48,7 @@ import {
 import type { TaskFileStore } from './host/file-store.js'
 import { createFileTaskStore } from './host/file-store.js'
 import { createInstanceLockPort } from './host/instance.js'
+import { openConfigChannel } from './host/settings-port.js'
 import type { Orchestrator, OrchestratorLog, TaskStorePort } from './runtime/orchestrator.js'
 import { createOrchestrator } from './runtime/orchestrator.js'
 import type { InstanceInfo } from './runtime/store.js'
@@ -153,10 +154,12 @@ export function apply(ctx: Context, rawConfig: unknown): void {
   // （`applyConfig` 在嵌套函数里赋值，静态分析看不到）
   const currentConfig = (): NormalizedHeartbeatConfig | null => current
 
-  const settings = ctx.settings.register(NAMESPACE, Config, {
-    // 入口 config 位于用户文档**之下**：用户在设置界面里的修改总是覆盖它
-    base: (typeof rawConfig === 'object' && rawConfig !== null ? rawConfig : {}) as never,
-    applies: 'live',
+  // ── 配置通道（同时支持 0.1.x 的 settings.register 与 0.2.x 的 Loader 行 Config）
+  // 详见 host/settings-port.ts：0.2.0 移除了 `settings.register`，配置改为读行自己的 Config。
+  const configChannel = openConfigChannel(ctx, {
+    namespace: NAMESPACE,
+    schema: Config,
+    rawConfig,
     validate: (value: unknown) => {
       const result = normalizeHeartbeatConfig(value, { now: clock.now(), systemTimezone })
       if (!result.ok) {
@@ -164,6 +167,12 @@ export function apply(ctx: Context, rawConfig: unknown): void {
       }
     },
   })
+
+  if (!configChannel.registered) {
+    ctx.logger.info(
+      'heartbeat: 未发现 settings.register（DSH 0.2.x 的配置系统）—— 配置取自本条 Loader 行的 Config，校验结果通过 /api/heartbeat/state 的 warnings 呈现',
+    )
+  }
 
   const orchestrator: Orchestrator = createOrchestrator({
     clock,
@@ -215,6 +224,9 @@ export function apply(ctx: Context, rawConfig: unknown): void {
         result.errors.length,
         describeIssues(result.errors),
       )
+      // 0.2.x 没有 `validate` 写前钩子，所以把问题**同时**放进 warnings：
+      // 界面从 /api/heartbeat/state 就能看到"为什么没生效"，而不是一片空白
+      warnings = result.errors
       return
     }
 
@@ -226,14 +238,8 @@ export function apply(ctx: Context, rawConfig: unknown): void {
     orchestrator.applyConfig(result.config)
   }
 
-  applyConfig(settings.get())
-  ctx.effect(
-    () =>
-      settings.watch((next) => {
-        applyConfig(next)
-      }),
-    'heartbeat:settings-watch',
-  )
+  applyConfig(configChannel.initial)
+  ctx.effect(() => configChannel.subscribe((next) => applyConfig(next)), 'heartbeat:settings-watch')
 
   // ── 单实例防御（D-10）──────────────────────────────────────────────────
   const { fileStore, instance } = persistence
