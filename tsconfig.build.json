@@ -4,8 +4,15 @@
     "noEmit": false,
     "outDir": "lib",
     "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true,
+    // 不产出也不发布类型声明：`exports` 里没有 `types`，`package.json` 也没有 `types` 字段，
+    // 官方 client-modules 只读 `exports["./client"].default` 指向的 JS。
+    //
+    // 另一个原因：开 declaration 时 TS 会额外要求「推断出的类型可被命名」，而 schemastery 的
+    // `Config` 推断类型在 pnpm 的依赖布局下会触发 TS2883（`cannot be named without a
+    // reference to 'Schema'`）—— 这个错误 `tsc --noEmit` 抓不到，只在构建时才炸。
+    // 真要发布类型，正确做法是给 `Config` 写显式的 `Schema<...>` 标注，而不是关掉这一项。
+    "declaration": false,
+    "declarationMap": false,
     "sourceMap": true
   },
   "include": ["src"]
