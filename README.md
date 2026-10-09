@@ -27,7 +27,7 @@ DSH 收到：「早上好呀，看看周一的日程，用你平时的语气跟�
 ## 安装
 
 ```sh
-dsh plugin add dsh-heartbeat --profile web
+dsh plugin add @analy3939/dsh-heartbeat --profile web
 ```
 
 因为包内声明了 `dsh.bundle`，`dsh` 会把它追加进 profile 的 `dsh.profile.bundles` 并自动应用配置层。**装完需要重启一次 DSH web**（新增插件行不会热加载）。
@@ -37,12 +37,15 @@ dsh plugin add dsh-heartbeat --profile web
 
 ```sh
 # 从 GitHub 源码安装（需要额外给 pnpm 授权构建脚本）
-dsh plugin add github:<你的账号>/dsh-heartbeat --profile web
+dsh plugin add github:Matrix-P/dsh-heartbeat --profile web
 
-# 从本地 tarball 安装
+# 从本地 tarball 安装（scoped 包的 tarball 名会把 scope 拼进来）
 pnpm pack
-dsh plugin add ./dsh-heartbeat-0.1.0.tgz --profile web
+dsh plugin add ./analy3939-dsh-heartbeat-0.1.2.tgz --profile web
 ```
+
+> 这个包曾经以裸名 `dsh-heartbeat` 发布（0.1.0 / 0.1.1）。因为 GitHub 上已有同名插件
+> （`Kanadego/dsh-heartbeat`），为避免混淆改用了 npm scope 前缀 **`@analy3939/`**；旧名已 `deprecate`，内容等价。
 
 要求：DSH **`0.1.5-rc.2` 或 `0.2.0-rc.2`**（两代都支持：配置通道在运行时探测 `settings.register` —— 有就走 0.1.x 的命名空间热更新，没有就用 0.2.x 的 Loader 行 Config）、Node ≥ 20、Web 系 profile（桌面端也是 Web 系）。
 
@@ -193,7 +196,7 @@ Highlights:
 - **Zero runtime dependencies** — DSH official packages as peer dependencies plus Node built-ins.
 
 ```sh
-dsh plugin add dsh-heartbeat --profile web
+dsh plugin add @analy3939/dsh-heartbeat --profile web
 ```
 
 Requires DSH `0.1.5-rc.2`+, Node ≥ 20, and a Web-family profile.

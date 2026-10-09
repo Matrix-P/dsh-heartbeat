@@ -9,4 +9,4 @@
 # （nearestPackage 的匹配条件）；不一致会导致宿主半边能跑、客户端界面永远不出现。
 - insert:
     - id: dsh-heartbeat
-      name: dsh-heartbeat
+      name: '@analy3939/dsh-heartbeat'

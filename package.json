@@ -1,6 +1,6 @@
 {
-  "name": "dsh-heartbeat",
-  "version": "0.1.1",
+  "name": "@analy3939/dsh-heartbeat",
+  "version": "0.1.2",
   "description": "DSH 心跳：按时间规则向指定会话的主 Agent 主动投递一条你自己写的提示；模型输出期间不计时",
   "type": "module",
   "license": "MIT",
