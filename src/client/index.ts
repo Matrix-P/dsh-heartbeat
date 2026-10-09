@@ -21,7 +21,8 @@ import { HeartbeatSection, SESSIONS_PATH } from './section.js'
 
 export const name = 'heartbeat-client'
 
-export const inject = ['slots', 'locale', 'settingsScope']
+/** 两代都存在的客户端服务；`settingsScope` **不能写进来**（0.2.x 没有，写了整个应用打不开）。 */
+export const inject = ['slots', 'locale']
 
 /** 本地化命名空间（必须匹配 `/^[a-z][a-z0-9-]*$/` 的变体）。 */
 export const LOCALE_NS = 'heartbeat'
@@ -63,7 +64,10 @@ export interface ClientSettingsScope {
 export interface ClientContext {
   readonly slots: ClientSlots
   readonly locale: ClientLocale
-  readonly settingsScope: ClientSettingsScope
+  /** 0.1.x 有、0.2.x 没有 —— 必须可选读取（`ctx.get`），不能直读。 */
+  readonly settingsScope?: ClientSettingsScope
+  /** 官方面向动态包的安全读法：服务不存在时返回 undefined 而不是抛错。 */
+  get?(name: string): unknown
   effect(callback: () => unknown, label?: string): unknown
 }
 
@@ -216,7 +220,45 @@ export function apply(ctx: ClientContext): void {
   )
 
   const t = ctx.locale.bind(LOCALE_NS)
-  const scope = ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }) as SettingsScopeLike
+
+  /**
+   * 【R18 的客户端版本 —— 不要死等一个可能不存在的服务】
+   *
+   * `settingsScope` 是 **0.1.x 的客户端服务**（由 `dsh-client-ui-settings` 提供）。
+   * 0.2.0 把配置系统整个重做了：客户端不再提供这个服务，配置改成由 Loader 行自己的
+   * `Config` schema 自动生成页面。于是原来把它写进 `inject` 会导致：
+   *
+   *   `pending (waiting for service: settingsScope)` → web 启动判定
+   *   "1 entry did not activate" → **整个桌面端打不开**（实测崩溃日志）。
+   *
+   * 所以改成：`inject` 只声明两代都有的服务，`settingsScope` 用 `ctx.get()` 可选读取；
+   * 拿不到就**不注册自定义分区**，把配置交给 0.2.x 官方生成的表单 —— 插件本体
+   * （定时、投递、HTTP 接口）完全不受影响。
+   */
+  const scope = (
+    typeof ctx.get === 'function' ? ctx.get('settingsScope') : undefined
+  ) as ClientSettingsScope | undefined
+
+  if (scope === undefined) {
+    ctx.effect(
+      () => () => undefined,
+      'heartbeat:settings-section-skipped',
+    )
+    // 只有控制台日志，不上抛：宿主没有 settingsScope 不是错误，是 0.2.x 的正常形态
+    ;(ctx as { logger?: { info(...args: unknown[]): void } }).logger?.info(
+      'heartbeat: 未发现客户端服务 settingsScope（DSH 0.2.x）—— 跳过自定义设置分区，配置请用官方生成的表单',
+    )
+  } else {
+    registerSection(ctx, scope, t)
+  }
+}
+
+function registerSection(
+  ctx: ClientContext,
+  scope: ClientSettingsScope,
+  t: (key: string) => string,
+): void {
+  const boundScope = scope.bind({ namespace: SETTINGS_NAMESPACE }) as SettingsScopeLike
 
   /**
    * 会话候选走 host 的只读通道（设计 10.2 / 10.5）。
@@ -247,7 +289,7 @@ export function apply(ctx: ClientContext): void {
         label: () => t('nav'),
         locale: LOCALE_NS,
       },
-      () => createElement(HeartbeatSection, { scope, t, loadSessions }),
+      () => createElement(HeartbeatSection, { scope: boundScope, t, loadSessions }),
     ),
   )
 }

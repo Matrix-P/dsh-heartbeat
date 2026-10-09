@@ -63,6 +63,12 @@ function createWorld(): World {
       },
     },
 
+    // 0.1.x 有 settingsScope；0.2.x 没有 —— 插件必须用 ctx.get() 可选读取。
+    // 这里返回它，走的正是「0.1.x：注册自定义分区」那条路。
+    get(name) {
+      return name === 'settingsScope' ? ctx.settingsScope : undefined
+    },
+
     effect(callback, label) {
       world.effects.push(label ?? '(no-label)')
       return callback()
@@ -78,7 +84,10 @@ describe('client 入口 — 插件形态', () => {
     expect(name).toBe('heartbeat-client')
     expect(inject).toContain('slots')
     expect(inject).toContain('locale')
-    expect(inject).toContain('settingsScope')
+    // 【重要】settingsScope 是 0.1.x 的客户端服务；0.2.x 没有它。
+    // 写进 inject 会让 fiber 永远 pending（waiting for service: settingsScope），
+    // 进而把整个 web 启动判为失败 —— 桌面端直接打不开（实测崩溃日志）。
+    expect(inject).not.toContain('settingsScope')
   })
 
   it('词表注册包在 ctx.effect 里（fiber 卸载自动清理）', () => {
