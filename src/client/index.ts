@@ -16,10 +16,17 @@
 
 import { createElement } from 'react'
 
+import { openClientConfigPort } from './config-port.js'
 import type { SessionPayload, SettingsScopeLike } from './section.js'
 import { HeartbeatSection, SESSIONS_PATH } from './section.js'
 
 export const name = 'heartbeat-client'
+
+/**
+ * 本插件那条 Loader 行的 **id**（`cordis.patch.yml` 里 `- id: dsh-heartbeat`）。
+ * 0.2.x 的 `configForms` 按这个 id 找配置（不是包名，也不是命名空间）。
+ */
+export const SETTINGS_ENTRY_ID = 'dsh-heartbeat'
 
 /** 两代都存在的客户端服务；`settingsScope` **不能写进来**（0.2.x 没有，写了整个应用打不开）。 */
 export const inject = ['slots', 'locale']
@@ -235,18 +242,19 @@ export function apply(ctx: ClientContext): void {
    * 拿不到就**不注册自定义分区**，把配置交给 0.2.x 官方生成的表单 —— 插件本体
    * （定时、投递、HTTP 接口）完全不受影响。
    */
-  const scope = (
-    typeof ctx.get === 'function' ? ctx.get('settingsScope') : undefined
-  ) as ClientSettingsScope | undefined
+  const scope = openClientConfigPort(
+    { get: (serviceName) => (typeof ctx.get === 'function' ? ctx.get(serviceName) : undefined) },
+    { namespace: SETTINGS_NAMESPACE, entryId: SETTINGS_ENTRY_ID },
+  )
 
   if (scope === undefined) {
     ctx.effect(
       () => () => undefined,
       'heartbeat:settings-section-skipped',
     )
-    // 只有控制台日志，不上抛：宿主没有 settingsScope 不是错误，是 0.2.x 的正常形态
+    // 只有控制台日志，不上抛：拿不到配置通道不是错误（0.2.x 上交给官方生成的表单）
     ;(ctx as { logger?: { info(...args: unknown[]): void } }).logger?.info(
-      'heartbeat: 未发现客户端服务 settingsScope（DSH 0.2.x）—— 跳过自定义设置分区，配置请用官方生成的表单',
+      'heartbeat: 未发现 settingsScope（0.1.x）或 configForms（0.2.x）—— 跳过自定义设置分区，配置请用官方生成的表单',
     )
   } else {
     registerSection(ctx, scope, t)
@@ -255,11 +263,9 @@ export function apply(ctx: ClientContext): void {
 
 function registerSection(
   ctx: ClientContext,
-  scope: ClientSettingsScope,
+  boundScope: SettingsScopeLike,
   t: (key: string) => string,
 ): void {
-  const boundScope = scope.bind({ namespace: SETTINGS_NAMESPACE }) as SettingsScopeLike
-
   /**
    * 会话候选走 host 的只读通道（设计 10.2 / 10.5）。
    * 拿不到就返回空列表 —— 组件会自动退化成"手填会话 id"。
