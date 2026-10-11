@@ -24,6 +24,22 @@ export const FIRE_PATH = '/api/heartbeat/fire'
 export const SESSIONS_PATH = '/api/heartbeat/sessions'
 
 /**
+ * 客户端半边的打点端点（诊断用）。
+ *
+ * 【为什么需要它】前几轮排查客户端界面时，唯一的证据是浏览器 Console 的日志 ——
+ * 而动态客户端插件**拿不到 `ctx.logger`**，我们的日志被 `?.` 悄悄咽掉，
+ * 于是"客户端半边到底有没有跑"完全无法判断 ✗
+ *
+ * 现在客户端在 `apply` 时打一次点，计数从 `/state` 读得到：
+ *
+ * - `clientPings > 0` → 客户端半边在跑（界面没出现就是插槽/渲染的问题）
+ * - `clientPings == 0` → 客户端半边根本没跑（是模块装载的问题）
+ *
+ * 这条信号不依赖任何客户端服务、不依赖 Console，一条 curl 就能看 ✓
+ */
+export const CLIENT_PING_PATH = '/api/heartbeat/client-ping'
+
+/**
  * **所有**端点的唯一来源。
  *
  * host 侧按这张表注册路由（`host/dsh.ts` 遍历它），测试也按它断言 —— 于是
@@ -32,7 +48,7 @@ export const SESSIONS_PATH = '/api/heartbeat/sessions'
  * 而未注册的 `/api/*` 会被 DSH 的统一鉴权门接管返回 **401**，客户端
  * `!response.ok` 后静默退回"手填会话 id"，host 侧日志一点异常都没有。
  */
-export const API_PATHS = [STATE_PATH, SESSIONS_PATH, FIRE_PATH] as const
+export const API_PATHS = [STATE_PATH, SESSIONS_PATH, FIRE_PATH, CLIENT_PING_PATH] as const
 
 export interface HttpRequestLike {
   readonly method: string
@@ -83,12 +99,16 @@ function text(status: number, body: string): HttpResponseLike {
 }
 
 export function createHeartbeatApi(deps: HeartbeatApiDeps): HeartbeatApi {
+  /** 客户端半边打过几次点 —— 诊断用，见 `CLIENT_PING_PATH`。 */
+  let clientPings = 0
+
   async function handleState(): Promise<HttpResponseLike> {
     return json(200, {
       now: deps.now(),
       timezone: deps.timezone,
       globalEnabled: deps.globalEnabled(),
       warnings: deps.warnings(),
+      clientPings,
       tasks: deps.snapshot(),
     })
   }
@@ -157,6 +177,12 @@ export function createHeartbeatApi(deps: HeartbeatApiDeps): HeartbeatApi {
       if (request.path === FIRE_PATH) {
         if (request.method !== 'POST') return text(405, '该路径只接受 POST')
         return handleFire(request)
+      }
+
+      if (request.path === CLIENT_PING_PATH) {
+        if (request.method !== 'POST') return text(405, '该路径只接受 POST')
+        clientPings += 1
+        return json(200, { ok: true, clientPings })
       }
 
       return text(404, '未知路径')

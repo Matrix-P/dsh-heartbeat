@@ -28,6 +28,14 @@ export const name = 'heartbeat-client'
  */
 export const SETTINGS_ENTRY_ID = 'dsh-heartbeat'
 
+/**
+ * 打点端点（诊断用，与 `src/api/http.ts` 的 `CLIENT_PING_PATH` 同值）。
+ *
+ * **故意在这里独立声明**：客户端 bundle 只打包自己的模块图，从宿主代码里 import
+ * 会把整个 api 层拖进浏览器包 ✗ 所以两处各写一份常量，靠这条注释对齐。
+ */
+const CLIENT_PING_PATH = '/api/heartbeat/client-ping'
+
 /** 两代都存在的客户端服务；`settingsScope` **不能写进来**（0.2.x 没有，写了整个应用打不开）。 */
 export const inject = ['slots', 'locale']
 
@@ -221,6 +229,10 @@ export const DICTIONARIES: Readonly<Record<string, Readonly<Record<string, strin
 }
 
 export function apply(ctx: ClientContext): void {
+  // 诊断打点：让宿主的 /state 能看到"客户端半边跑起来了"。
+  // 这是排查界面问题时**唯一不依赖 Console** 的信号（见 api/http.ts 的同名端点）。
+  void fetch(CLIENT_PING_PATH, { method: 'POST' }).catch(() => undefined)
+
   ctx.effect(
     () => ctx.locale.register(LOCALE_NS, DICTIONARIES as Record<string, Record<string, string>>),
     'heartbeat:locale',

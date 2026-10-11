@@ -5,6 +5,7 @@ import type { HeartbeatApiDeps, HttpRequestLike } from '../../src/api/http.js'
 import {
   createHeartbeatApi,
   API_PATHS,
+  CLIENT_PING_PATH,
   STATE_PATH,
   FIRE_PATH,
   SESSIONS_PATH,
@@ -226,8 +227,25 @@ describe('HeartbeatApi — 端点清单（防"加了 handler 忘了注册路由"
     }
   })
 
-  it('API_PATHS 与三个具名端点一一对应（没有漏也没有多）', () => {
-    expect([...API_PATHS].sort()).toEqual([STATE_PATH, SESSIONS_PATH, FIRE_PATH].sort())
+  it('API_PATHS 与具名端点一一对应（没有漏也没有多）', () => {
+    expect([...API_PATHS].sort()).toEqual(
+      [STATE_PATH, SESSIONS_PATH, FIRE_PATH, CLIENT_PING_PATH].sort(),
+    )
+  })
+
+  it('客户端打点：POST 自增计数，且从 /state 读得到', async () => {
+    const api = createHeartbeatApi(createEnv().deps)
+    const pings = async (): Promise<number> =>
+      parse((await api.handle(request({ path: STATE_PATH }))).body).clientPings
+
+    expect(await pings()).toBe(0)
+
+    expect((await api.handle(request({ method: 'POST', path: CLIENT_PING_PATH }))).status).toBe(200)
+    expect((await api.handle(request({ method: 'POST', path: CLIENT_PING_PATH }))).status).toBe(200)
+
+    expect(await pings()).toBe(2)
+    // 只接受 POST —— 这条信号不该被随便触发
+    expect((await api.handle(request({ path: CLIENT_PING_PATH }))).status).toBe(405)
   })
 })
 
