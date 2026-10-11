@@ -16,7 +16,7 @@
 
 import { createElement } from 'react'
 
-import { openClientConfigPort } from './config-port.js'
+import { createHttpConfigPort, openClientConfigPort } from './config-port.js'
 import type { SessionPayload, SettingsScopeLike } from './section.js'
 import { HeartbeatSection, SESSIONS_PATH } from './section.js'
 
@@ -254,23 +254,21 @@ export function apply(ctx: ClientContext): void {
    * 拿不到就**不注册自定义分区**，把配置交给 0.2.x 官方生成的表单 —— 插件本体
    * （定时、投递、HTTP 接口）完全不受影响。
    */
-  const scope = openClientConfigPort(
-    { get: (serviceName) => (typeof ctx.get === 'function' ? ctx.get(serviceName) : undefined) },
-    { namespace: SETTINGS_NAMESPACE, entryId: SETTINGS_ENTRY_ID },
-  )
+  const scope =
+    openClientConfigPort(
+      { get: (serviceName) => (typeof ctx.get === 'function' ? ctx.get(serviceName) : undefined) },
+      { namespace: SETTINGS_NAMESPACE, entryId: SETTINGS_ENTRY_ID },
+    ) ?? createHttpConfigPort(fetch)
 
-  if (scope === undefined) {
-    ctx.effect(
-      () => () => undefined,
-      'heartbeat:settings-section-skipped',
-    )
-    // 只有控制台日志，不上抛：拿不到配置通道不是错误（0.2.x 上交给官方生成的表单）
-    ;(ctx as { logger?: { info(...args: unknown[]): void } }).logger?.info(
-      'heartbeat: 未发现 settingsScope（0.1.x）或 configForms（0.2.x）—— 跳过自定义设置分区，配置请用官方生成的表单',
-    )
-  } else {
-    registerSection(ctx, scope, t)
-  }
+  /**
+   * 【绝不能再"探测失败就跳过"】实测 `clientPings: 1` 证明客户端半边能跑，
+   * 但 0.2.x 上 `settingsScope` 不存在、`configForms` 又探测不到 —— 跳过就等于
+   * **界面整个消失**（条目看得到、点进去空的）✗✗
+   *
+   * 现在改成兜底：探测到框架服务就用框架的，探测不到就用**我们自己的 HTTP 通道**
+   * （`GET/POST /api/heartbeat/config`），两代行为完全一致 ✓
+   */
+  registerSection(ctx, scope, t)
 }
 
 function registerSection(

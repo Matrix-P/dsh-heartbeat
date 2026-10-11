@@ -121,3 +121,72 @@ export function openClientConfigPort(
 
   return undefined
 }
+
+/** 配置读写端点（与 `src/api/http.ts` 的 `CONFIG_PATH` 同值，故意各写一份）。 */
+export const HTTP_CONFIG_PATH = '/api/heartbeat/config'
+
+/**
+ * HTTP 兜底作用域 —— **两代都不依赖任何客户端服务**。
+ *
+ * 【为什么必须有它】实测（`clientPings: 1`）证明客户端半边能跑，但 0.2.x 上
+ * `settingsScope` 不存在、`configForms` 又探测不到 → 之前"探测失败就跳过分区"
+ * 会让界面整个消失 ✗✗ 所以改成兜底：配置读写走我们自己的 HTTP 端点。
+ *
+ * 【同步接口怎么接异步 IO】`SettingsScopeLike.getSnapshot()` 是**同步**的，
+ * 所以这里维护一份缓存：创建时拉一次、`subscribe()` 时再拉一次、`set()` 写完再拉。
+ * 界面本来就有 5 秒状态轮询会触发重渲染，所以最迟 5 秒可见最新值 ✓
+ */
+export function createHttpConfigPort(
+  fetchImpl: typeof fetch,
+  path: string = HTTP_CONFIG_PATH,
+): SettingsScopeLike {
+  let snapshot: SettingsScopeSnapshot = { status: 'unavailable' }
+  const listeners = new Set<(next: SettingsScopeSnapshot) => void>()
+
+  const publish = (next: SettingsScopeSnapshot): void => {
+    snapshot = next
+    for (const listener of [...listeners]) listener(next)
+  }
+
+  const refresh = async (): Promise<void> => {
+    try {
+      const response = await fetchImpl(path, { headers: { accept: 'application/json' } })
+      if (!response.ok) {
+        publish({ status: 'unavailable' })
+        return
+      }
+      const payload = (await response.json()) as { tasks?: readonly unknown[] }
+      publish({
+        status: 'ready',
+        value: { tasks: Array.isArray(payload.tasks) ? payload.tasks : [] },
+        writable: true,
+      })
+    } catch {
+      // 拿不到就标不可用 —— 绝不抛：抛了会让整个设置分区渲染失败
+      publish({ status: 'unavailable' })
+    }
+  }
+
+  void refresh()
+
+  return {
+    getSnapshot: () => snapshot,
+
+    subscribe(listener: (next: SettingsScopeSnapshot) => void) {
+      listeners.add(listener)
+      void refresh()
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+
+    async set(field: string, value: unknown): Promise<void> {
+      await fetchImpl(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+      await refresh()
+    },
+  }
+}
