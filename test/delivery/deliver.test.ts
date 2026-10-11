@@ -69,21 +69,18 @@ function makeRoot(world: World, sessionId: string): void {
 const BASE = { text: '现在是{time}', onBusy: 'queue', coldWake: 'session-controller' } as const
 
 describe('buildOutboundMessage — 投递消息的来源标记', () => {
-  it('带 form: notice，避免被客户端渲染成「用户自己说的」气泡', () => {
+  it('来源只带生产者自己的 kind —— V4 拒绝一切 V3 包装', () => {
     const message = buildOutboundMessage('早上好')
-    expect(message.source.form).toBe('notice')
-    // V4 会话格式**显式拒绝** `kind: 'plugin'`（实测报错 format v4 message requires a
-    // producer-owned source kind），必须用生产者自己的 kind：`plugin:<插件名>` ✓
-    expect(message.source.kind).toBe('plugin:heartbeat')
+    // ① `kind: 'plugin'` 被显式拒绝：format v4 message requires a producer-owned source kind
     expect(message.source.kind).not.toBe('plugin')
+    expect(message.source.kind).toBe('plugin:heartbeat')
+    // ② `form`/`summary` 是 V3 的 notice 包装，V4 没有对应物 —— 带着它们同样会
+    //    触发上面那条报错（实测）✗ 所以来源**只允许一个字段** ✓
+    expect(Object.keys(message.source)).toEqual(['kind'])
   })
 
   it('文案原样保留（不加工）', () => {
     expect(buildOutboundMessage('现在是08:00，{未求值}').text).toBe('现在是08:00，{未求值}')
-  })
-
-  it('带 summary 供界面展示', () => {
-    expect(buildOutboundMessage('x').source.summary.length).toBeGreaterThan(0)
   })
 })
 

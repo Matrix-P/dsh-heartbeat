@@ -71,8 +71,8 @@ function createWorld(options: { withResolve?: boolean } = {}): World {
 
 const SAMPLE: OutboundMessage = {
   text: '现在是08:00',
-  // V4 要求「生产者自己的 kind」：`plugin:heartbeat`，且**没有** `plugin` 字段 ✓
-  source: { kind: 'plugin:heartbeat', form: 'notice', summary: '心跳提醒' },
+  // V4 只认生产者自己的 kind，且不带任何 V3 包装（没有 plugin/form/summary 字段）✓
+  source: { kind: 'plugin:heartbeat' },
 }
 
 describe('createDeliveryPort — DSH 形状映射（FR-4）', () => {
@@ -161,7 +161,7 @@ describe('createDeliveryPort — 投递原语', () => {
 })
 
 describe('toUserMessage — 必须走官方工厂', () => {
-  it('产出带 id / role 的官方 UserMessage，并保留 form: notice', () => {
+  it('产出带 id / role 的官方 UserMessage，来源是生产者自己的 kind', () => {
     const message = toUserMessage(SAMPLE)
 
     expect(message.role).toBe('user')
@@ -169,7 +169,8 @@ describe('toUserMessage — 必须走官方工厂', () => {
     expect(message.content).toEqual([{ type: 'text', text: '现在是08:00' }])
     // V4 要求「生产者自己的 kind」：`plugin:heartbeat`，且**没有** `plugin` 字段（0.2.0 起
     // `kind: 'plugin'` 会被 dsh-session-format-v3-to-v4 显式拒绝 ✗）
-    expect(message.source).toMatchObject({ kind: 'plugin:heartbeat', form: 'notice' })
+    // V4 只接受「生产者自己的 kind」，且**不允许任何 V3 包装字段**（form/summary/plugin）✗
+    expect(message.source).toEqual({ kind: 'plugin:heartbeat' })
   })
 
   it('文案原样透传（组件不加工，D-1）', () => {

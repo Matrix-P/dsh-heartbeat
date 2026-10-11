@@ -19,26 +19,27 @@ import type { ColdWake, OnBusy } from '../config.js'
 export const PLUGIN_NAME = 'heartbeat'
 
 /**
- * 消息来源。**0.2.0 起必须用"生产者自己的 kind"**。
+ * 消息来源。**V4 只认"生产者自己的 kind"，且不要带 V3 的 notice 包装**。
  *
- * V4 会话格式里 `kind: 'plugin'` 是**被显式拒绝**的（实测报错：
- * `format v4 message requires a producer-owned source kind`）。官方的迁移规则
- * （`dsh-session-format-v3-to-v4` 的 `producerKind`）把 released 的 V3 plugin source
- * `{kind:'plugin', plugin:'heartbeat', …}` 重写成：
+ * 两个坑，都是实测踩出来的：
+ *
+ * 1. `kind: 'plugin'` 被**显式拒绝**（`format v4 message requires a producer-owned
+ *    source kind`）。官方的 `producerKind` 把它重写成 **`plugin:<插件名>`**。
+ * 2. `form: 'notice'` / `summary` 是 **V3 的 notice 包装**，V4 里没有对应物 ✗
+ *    带着它们触发"运行失败：format v4 message requires a producer-owned source kind"。
+ *    官方迁移代码给出的 canonical 形状**只有一个字段**：
  *
  * ```js
- * return `plugin:${plugin}`;        // → 'plugin:heartbeat'
- * // 并把 `plugin` 字段整个丢掉，其余字段（form/summary）原样保留
+ * if (Object.keys(source).length === 2) return { kind }   // V3 的 {kind, plugin} → {kind}
  * ```
  *
- * 所以这里直接采用迁移后的目标形状 —— 与官方对旧会话的升级结果**完全一致** ✓
+ * 所以这里发送**最小的 V4 形状** `{ kind: 'plugin:heartbeat' }` ✓
+ * （与官方升级旧会话后的结果逐字一致 ✓ 代价：消息不再渲染成 notice 样式，
+ * 但投递本身正常 —— 先保证能用 ✓）
  */
 export interface OutboundSource {
-  /** 生产者自己的 kind：`plugin:<插件名>`（V4 要求，见上）。 */
+  /** 生产者自己的 kind：`plugin:<插件名>`（V4 要求）。**只允许这一个字段**。 */
   readonly kind: 'plugin:heartbeat'
-  /** 决定客户端如何呈现；`'notice'` = 系统提示而不是用户气泡 */
-  readonly form: 'notice'
-  readonly summary: string
 }
 
 export interface OutboundMessage {
@@ -48,8 +49,6 @@ export interface OutboundMessage {
 
 export const PLUGIN_SOURCE: OutboundSource = {
   kind: 'plugin:heartbeat',
-  form: 'notice',
-  summary: '心跳提醒',
 }
 
 /** 构造投递消息。**组件不加工文案**（D-1）：`text` 原样透传。 */
