@@ -18,10 +18,24 @@ import type { ColdWake, OnBusy } from '../config.js'
 
 export const PLUGIN_NAME = 'heartbeat'
 
-/** 与官方 `MessageSourceMap` 的 `plugin` 支对应（`dsh-llm lib/types/message.d.ts:98-101`）。 */
+/**
+ * 消息来源。**0.2.0 起必须用"生产者自己的 kind"**。
+ *
+ * V4 会话格式里 `kind: 'plugin'` 是**被显式拒绝**的（实测报错：
+ * `format v4 message requires a producer-owned source kind`）。官方的迁移规则
+ * （`dsh-session-format-v3-to-v4` 的 `producerKind`）把 released 的 V3 plugin source
+ * `{kind:'plugin', plugin:'heartbeat', …}` 重写成：
+ *
+ * ```js
+ * return `plugin:${plugin}`;        // → 'plugin:heartbeat'
+ * // 并把 `plugin` 字段整个丢掉，其余字段（form/summary）原样保留
+ * ```
+ *
+ * 所以这里直接采用迁移后的目标形状 —— 与官方对旧会话的升级结果**完全一致** ✓
+ */
 export interface OutboundSource {
-  readonly kind: 'plugin'
-  readonly plugin: string
+  /** 生产者自己的 kind：`plugin:<插件名>`（V4 要求，见上）。 */
+  readonly kind: 'plugin:heartbeat'
   /** 决定客户端如何呈现；`'notice'` = 系统提示而不是用户气泡 */
   readonly form: 'notice'
   readonly summary: string
@@ -33,8 +47,7 @@ export interface OutboundMessage {
 }
 
 export const PLUGIN_SOURCE: OutboundSource = {
-  kind: 'plugin',
-  plugin: PLUGIN_NAME,
+  kind: 'plugin:heartbeat',
   form: 'notice',
   summary: '心跳提醒',
 }

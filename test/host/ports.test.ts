@@ -71,7 +71,8 @@ function createWorld(options: { withResolve?: boolean } = {}): World {
 
 const SAMPLE: OutboundMessage = {
   text: '现在是08:00',
-  source: { kind: 'plugin', plugin: 'heartbeat', form: 'notice', summary: '心跳提醒' },
+  // V4 要求「生产者自己的 kind」：`plugin:heartbeat`，且**没有** `plugin` 字段 ✓
+  source: { kind: 'plugin:heartbeat', form: 'notice', summary: '心跳提醒' },
 }
 
 describe('createDeliveryPort — DSH 形状映射（FR-4）', () => {
@@ -166,7 +167,9 @@ describe('toUserMessage — 必须走官方工厂', () => {
     expect(message.role).toBe('user')
     expect(typeof message.id).toBe('string')
     expect(message.content).toEqual([{ type: 'text', text: '现在是08:00' }])
-    expect(message.source).toMatchObject({ kind: 'plugin', plugin: 'heartbeat', form: 'notice' })
+    // V4 要求「生产者自己的 kind」：`plugin:heartbeat`，且**没有** `plugin` 字段（0.2.0 起
+    // `kind: 'plugin'` 会被 dsh-session-format-v3-to-v4 显式拒绝 ✗）
+    expect(message.source).toMatchObject({ kind: 'plugin:heartbeat', form: 'notice' })
   })
 
   it('文案原样透传（组件不加工，D-1）', () => {

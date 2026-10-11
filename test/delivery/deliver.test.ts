@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DeliveryPort, OutboundMessage } from '../../src/delivery/deliver.js'
-import { buildOutboundMessage, classifyWarmUpError, deliver, PLUGIN_SOURCE } from '../../src/delivery/deliver.js'
+import { buildOutboundMessage, classifyWarmUpError, deliver } from '../../src/delivery/deliver.js'
 
 interface World {
   readonly live: Set<string>
@@ -72,8 +72,10 @@ describe('buildOutboundMessage — 投递消息的来源标记', () => {
   it('带 form: notice，避免被客户端渲染成「用户自己说的」气泡', () => {
     const message = buildOutboundMessage('早上好')
     expect(message.source.form).toBe('notice')
-    expect(message.source.kind).toBe('plugin')
-    expect(message.source.plugin).toBe(PLUGIN_SOURCE.plugin)
+    // V4 会话格式**显式拒绝** `kind: 'plugin'`（实测报错 format v4 message requires a
+    // producer-owned source kind），必须用生产者自己的 kind：`plugin:<插件名>` ✓
+    expect(message.source.kind).toBe('plugin:heartbeat')
+    expect(message.source.kind).not.toBe('plugin')
   })
 
   it('文案原样保留（不加工）', () => {
