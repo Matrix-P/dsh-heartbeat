@@ -47,6 +47,7 @@ import {
 } from './host/dsh.js'
 import type { TaskFileStore } from './host/file-store.js'
 import { createFileTaskStore } from './host/file-store.js'
+import { readStoredConfig, writeStoredConfig } from './host/config-store.js'
 import { createInstanceLockPort } from './host/instance.js'
 import { openConfigChannel } from './host/settings-port.js'
 import type { Orchestrator, OrchestratorLog, TaskStorePort } from './runtime/orchestrator.js'
@@ -194,6 +195,25 @@ export function apply(ctx: Context, rawConfig: unknown): void {
     timezone: systemTimezone,
     globalEnabled: () => currentConfig()?.enabled ?? true,
     warnings: () => warnings,
+    // ── 配置通道（自有存储）────────────────────────────────────────────────
+    // 界面（设置分区）通过 GET/POST /api/heartbeat/config 读写任务定义。
+    // 之所以不用框架的配置层：0.2.x 上它既探测不到、桌面端又写不进去（实测）✗
+    readConfig: () => readStoredConfig(),
+    writeConfig: async (patch) => {
+      const base = readStoredConfig()
+      const merged: Record<string, unknown> = {
+        ...(typeof base === 'object' && base !== null ? (base as Record<string, unknown>) : {}),
+        ...patch,
+      }
+      const result = normalizeHeartbeatConfig(merged, { now: clock.now(), systemTimezone })
+      // 校验不过就把问题原样抛回界面（HTTP 400 会把 message 透给用户）
+      if (!result.ok) throw new TypeError(describeIssues(result.errors))
+
+      writeStoredConfig(merged)
+      current = result.config
+      warnings = result.warnings
+      orchestrator.applyConfig(result.config)
+    },
   })
 
   // ── 外部事实订阅（fiber 卸载自动注销）────────────────────────────────────
@@ -238,7 +258,13 @@ export function apply(ctx: Context, rawConfig: unknown): void {
     orchestrator.applyConfig(result.config)
   }
 
-  applyConfig(configChannel.initial)
+  // 启动优先级：自有存储里**有任务**就用它（界面改过的配置），
+  // 否则回落到框架 config（0.1.x 的 settings / 0.2.x 的行 config）✓
+  const storedOnDisk = readStoredConfig()
+  const storedTasks = (storedOnDisk as { tasks?: unknown } | undefined)?.tasks
+  applyConfig(
+    Array.isArray(storedTasks) && storedTasks.length > 0 ? storedOnDisk : configChannel.initial,
+  )
   ctx.effect(() => configChannel.subscribe((next) => applyConfig(next)), 'heartbeat:settings-watch')
 
   // ── 单实例防御（D-10）──────────────────────────────────────────────────

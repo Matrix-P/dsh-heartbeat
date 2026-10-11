@@ -24,6 +24,14 @@ export const FIRE_PATH = '/api/heartbeat/fire'
 export const SESSIONS_PATH = '/api/heartbeat/sessions'
 
 /**
+ * 任务配置读写端点（**我们自己的存储**，见 `host/config-store.ts`）。
+ *
+ * 设置分区通过它读任务列表、保存修改 —— 因为 0.2.x 上框架侧的配置既探测不到、
+ * 桌面端又写不进去 ✗ 所以配置通道由我们自己提供，两代行为一致 ✓
+ */
+export const CONFIG_PATH = '/api/heartbeat/config'
+
+/**
  * 客户端半边的打点端点（诊断用）。
  *
  * 【为什么需要它】前几轮排查客户端界面时，唯一的证据是浏览器 Console 的日志 ——
@@ -48,7 +56,13 @@ export const CLIENT_PING_PATH = '/api/heartbeat/client-ping'
  * 而未注册的 `/api/*` 会被 DSH 的统一鉴权门接管返回 **401**，客户端
  * `!response.ok` 后静默退回"手填会话 id"，host 侧日志一点异常都没有。
  */
-export const API_PATHS = [STATE_PATH, SESSIONS_PATH, FIRE_PATH, CLIENT_PING_PATH] as const
+export const API_PATHS = [
+  STATE_PATH,
+  SESSIONS_PATH,
+  FIRE_PATH,
+  CLIENT_PING_PATH,
+  CONFIG_PATH,
+] as const
 
 export interface HttpRequestLike {
   readonly method: string
@@ -82,6 +96,13 @@ export interface HeartbeatApiDeps {
   readonly globalEnabled: () => boolean
   /** 配置加载期产生的提示（例如 `once` 已过期） */
   readonly warnings: () => readonly ConfigIssue[]
+  /**
+   * 从**自有存储**读取任务定义（拿不到返回 `undefined`）。
+   * 可选：不接线时配置端点返回 501，其它功能不受影响 ✓
+   */
+  readonly readConfig?: () => unknown
+  /** 把任务定义写回自有存储，并**立即生效**（重载编排器） */
+  readonly writeConfig?: (patch: { readonly tasks: readonly unknown[] }) => Promise<void>
 }
 
 export interface HeartbeatApi {
@@ -162,11 +183,54 @@ export function createHeartbeatApi(deps: HeartbeatApiDeps): HeartbeatApi {
     return json(200, { ok: true, id: taskId })
   }
 
+  /** 只取任务列表，别的字段由 host 侧自行合并。 */
+  function configTasks(): readonly unknown[] {
+    const value = deps.readConfig?.()
+    const tasks = (value as { tasks?: unknown } | undefined)?.tasks
+    return Array.isArray(tasks) ? tasks : []
+  }
+
+  async function handleConfigGet(): Promise<HttpResponseLike> {
+    if (deps.readConfig === undefined) return text(501, '配置通道未接线')
+    return json(200, { tasks: configTasks() })
+  }
+
+  async function handleConfigPost(request: HttpRequestLike): Promise<HttpResponseLike> {
+    // 与手动触发同一条策略：改配置只允许本机发起
+    if (!request.fromLoopback) return text(403, '心跳配置只允许从本机修改')
+    if (deps.writeConfig === undefined) return text(501, '配置通道未接线')
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(request.body ?? '')
+    } catch {
+      return text(400, '请求体不是合法 JSON')
+    }
+
+    const tasks = (parsed as { tasks?: unknown } | null)?.tasks
+    if (!Array.isArray(tasks)) return text(400, '请求体必须是 {"tasks": [...]}')
+
+    try {
+      await deps.writeConfig({ tasks })
+    } catch (error) {
+      // 校验失败也走这里：信息原样回给界面，用户能看到"为什么没保存"
+      return text(400, `配置未生效：${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    return json(200, { ok: true, tasks: configTasks() })
+  }
+
   return {
     async handle(request) {
       if (request.path === STATE_PATH) {
         if (request.method !== 'GET') return text(405, '该路径只接受 GET')
         return handleState()
+      }
+
+      if (request.path === CONFIG_PATH) {
+        if (request.method === 'GET') return handleConfigGet()
+        if (request.method === 'POST') return handleConfigPost(request)
+        return text(405, '该路径接受 GET 或 POST')
       }
 
       if (request.path === SESSIONS_PATH) {

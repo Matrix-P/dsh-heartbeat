@@ -6,6 +6,7 @@ import {
   createHeartbeatApi,
   API_PATHS,
   CLIENT_PING_PATH,
+  CONFIG_PATH,
   STATE_PATH,
   FIRE_PATH,
   SESSIONS_PATH,
@@ -229,8 +230,56 @@ describe('HeartbeatApi — 端点清单（防"加了 handler 忘了注册路由"
 
   it('API_PATHS 与具名端点一一对应（没有漏也没有多）', () => {
     expect([...API_PATHS].sort()).toEqual(
-      [STATE_PATH, SESSIONS_PATH, FIRE_PATH, CLIENT_PING_PATH].sort(),
+      [STATE_PATH, SESSIONS_PATH, FIRE_PATH, CLIENT_PING_PATH, CONFIG_PATH].sort(),
     )
+  })
+
+  it('配置通道：GET 读自有存储的任务，POST 写回并回读', async () => {
+    let stored: unknown = { tasks: [{ id: 't1', name: '示例' }] }
+    const writes: unknown[] = []
+    const api = createHeartbeatApi({
+      ...createEnv().deps,
+      readConfig: () => stored,
+      writeConfig: async (patch) => {
+        writes.push(patch)
+        stored = { ...(stored as object), ...patch }
+      },
+    })
+
+    const read = await api.handle(request({ path: CONFIG_PATH }))
+    expect(read.status).toBe(200)
+    expect(parse(read.body).tasks).toHaveLength(1)
+
+    const written = await api.handle(
+      request({
+        method: 'POST',
+        path: CONFIG_PATH,
+        body: JSON.stringify({ tasks: [{ id: 't2' }] }),
+      }),
+    )
+    expect(written.status).toBe(200)
+    expect(writes).toEqual([{ tasks: [{ id: 't2' }] }])
+    expect(parse(written.body).tasks).toEqual([{ id: 't2' }])
+
+    // 非法请求体 / 缺 tasks / 非本机 / 方法不对，都要有明确回应
+    expect(
+      (await api.handle(request({ method: 'POST', path: CONFIG_PATH, body: 'nope' }))).status,
+    ).toBe(400)
+    expect((await api.handle(request({ method: 'POST', path: CONFIG_PATH, body: '{}' }))).status).toBe(400)
+    expect(
+      (
+        await api.handle(
+          request({ method: 'POST', path: CONFIG_PATH, body: '{"tasks":[]}', fromLoopback: false }),
+        )
+      ).status,
+    ).toBe(403)
+    expect((await api.handle(request({ method: 'DELETE', path: CONFIG_PATH }))).status).toBe(405)
+  })
+
+  it('配置通道未接线时返回 501，其它端点不受影响', async () => {
+    const api = createHeartbeatApi(createEnv().deps)
+    expect((await api.handle(request({ path: CONFIG_PATH }))).status).toBe(501)
+    expect((await api.handle(request({ path: STATE_PATH }))).status).toBe(200)
   })
 
   it('客户端打点：POST 自增计数，且从 /state 读得到', async () => {
